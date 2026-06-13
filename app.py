@@ -20,7 +20,12 @@ import streamlit as st
 
 from config import DATA_GO_KR_KEY, KAKAO_REST_KEY
 from er_live import (get_er_beds, get_er_locations, get_er_acceptance,
-                     get_er_diss_messages, MKIOSK_LABELS)
+                     MKIOSK_LABELS)
+# 수용불가 메시지 기능: er_live.py가 구버전이어도 앱 전체가 죽지 않도록 옵션 import
+try:
+    from er_live import get_er_diss_messages
+except ImportError:
+    get_er_diss_messages = None
 from route_time import get_route_time
 
 # 페이지 아이콘: favicon.png가 있으면 이미지로, 없으면 이모지 폴백
@@ -116,6 +121,8 @@ def load_diss_messages():
     """
     try:
         idx = {}
+        if get_er_diss_messages is None:      # er_live 구버전 → 기능 비활성
+            return idx
         for m in get_er_diss_messages("서울특별시"):
             if m.get("hpid"):
                 idx.setdefault(m["hpid"], []).append(m)
