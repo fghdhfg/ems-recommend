@@ -212,7 +212,16 @@ with st.sidebar:
 districts = DISTRICT_SETS[district_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
 
-st.title("119 응급이송 — 응급실 추천")
+st.markdown("""
+<div style="background:linear-gradient(90deg,#1D3557 0%,#457B9D 100%);
+            padding:18px 24px;border-radius:12px;margin-bottom:8px;
+            border-left:8px solid #E63946;">
+  <span style="font-size:30px;font-weight:800;color:#FFFFFF;">🚑 119 응급이송 — 응급실 추천</span><br>
+  <span style="font-size:14px;color:#A8DADC;">
+    전화 뺑뺑이 없이, 받아줄 수 있는 가장 빠른 응급실을 즉시 추천
+  </span>
+</div>
+""", unsafe_allow_html=True)
 st.caption("실시간 가용병상·중증질환 수용가능(국립중앙의료원) × 실시간 경로(카카오) · 시연: 서울 은평구")
 
 # ──────────────────────────────────────────────
