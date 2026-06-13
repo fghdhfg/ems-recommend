@@ -112,6 +112,50 @@ def get_er_acceptance(sido: str = "서울특별시", sigungu: str | None = None)
     return out
 
 
+# 수용불가/진료불가 공지 '본문'이 담길 만한 후보 태그명들.
+# ⚠️ 라이브 응답으로 확정 못했으므로 후보키로 탐색한다.
+#    python er_live.py 실행 시 하단에서 실제 item 태그를 덤프하니,
+#    메시지 본문이 어느 태그인지 확인한 뒤 이 리스트를 그 이름으로 정리할 것.
+#    (raw 딕셔너리에 모든 태그가 보존되므로 잘못 잡아도 데이터는 안 잃음.)
+_MSG_TEXT_KEYS = ["symBlkMsg", "symTypCodMag", "symBlkMsgTyp", "msg", "message"]
+
+
+def get_er_diss_messages(sido: str = "서울특별시", sigungu: str | None = None) -> list[dict]:
+    """
+    응급실이 띄운 '수용불가 / ○○과 진료불가' 실시간 공지 메시지.
+    API: getEmrrmSrsillDissMsgInqire
+    반환: [{"hpid":..., "name":..., "message":..., "raw":{태그:값}}, ...]
+
+    ※ 특정 구(sigungu) 단독은 공지 0건일 때가 많다.
+      앱에서는 시도 전체로 받아 hpid 로 매칭하는 것을 권장.
+    ※ 공지 없음(NODATA)은 정상 상태이므로 빈 리스트를 반환한다(예외 X).
+    """
+    params = {"STAGE1": sido}
+    if sigungu:
+        params["STAGE2"] = sigungu
+    try:
+        root = _call("getEmrrmSrsillDissMsgInqire", params)
+    except RuntimeError:
+        # NODATA 등으로 resultCode != 00 인 경우 → 공지 없음으로 간주
+        return []
+
+    out = []
+    for item in root.iter("item"):
+        msg = ""
+        for k in _MSG_TEXT_KEYS:
+            v = (item.findtext(k) or "").strip()
+            if v:
+                msg = v
+                break
+        out.append({
+            "hpid": item.findtext("hpid", ""),
+            "name": item.findtext("dutyName", ""),
+            "message": msg,
+            "raw": {c.tag: (c.text or "").strip() for c in item},
+        })
+    return out
+
+
 def _to_int(v):
     try:
         return int(v)
@@ -142,3 +186,16 @@ if __name__ == "__main__":
             mark = "✓" if codes.get(n) == "Y" else "✗"
             key_items.append(f"{MKIOSK_LABELS[n]}={mark}")
         print(f"  {name}: " + ", ".join(key_items))
+
+    print("\n=== 수용불가 메시지 (서울 전체에서 앞 5건 + 태그 확인) ===")
+    msgs = get_er_diss_messages("서울특별시")   # 구 단독은 0건 많아 전체로 확인
+    if not msgs:
+        print("  현재 등록된 공지 0건 (정상일 수 있음)")
+    else:
+        # ★ 첫 건의 태그 목록 = 실제 응답 필드. _MSG_TEXT_KEYS 정리에 사용 ★
+        print("  [첫 건 태그 목록]")
+        for tag, val in msgs[0]["raw"].items():
+            print(f"    {tag}: {val}")
+        print("  [앞 5건 요약]")
+        for m in msgs[:5]:
+            print(f"    {m['name']}({m['hpid']}): {m['message'] or '(본문 태그 미확정 — raw 확인)'}")
