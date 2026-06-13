@@ -11,6 +11,7 @@ v3 핵심
 """
 
 import os
+import json
 from datetime import datetime
 
 import pandas as pd
@@ -28,24 +29,17 @@ except ImportError:
     get_er_diss_messages = None
 from route_time import get_route_time
 
-# 페이지 아이콘: favicon.png 로드 + 실패 원인 기록(사이드바 하단에 표시)
+# 페이지 아이콘: favicon.png 있으면 사용, 없으면 이모지 폴백
 _icon = "🚑"
-_icon_status = "favicon 미적용 — 이모지 사용 중"
-_here = os.path.dirname(os.path.abspath(__file__))
-_candidates = [os.path.join(_here, "favicon.png"), "favicon.png",
-               os.path.join(os.getcwd(), "favicon.png")]
 try:
     from PIL import Image
-    _found = next((p for p in _candidates if os.path.exists(p)), None)
-    if _found:
-        _icon = Image.open(_found)
-        _icon_status = f"favicon 적용됨 ({_found})"
-    else:
-        _icon_status = "favicon.png 못 찾음 → " + " | ".join(_candidates)
-except ImportError:
-    _icon_status = "pillow 미설치 — requirements.txt 확인"
-except Exception as e:
-    _icon_status = f"favicon 로드 실패: {e}"
+    _here = os.path.dirname(os.path.abspath(__file__))
+    for _p in (os.path.join(_here, "favicon.png"), "favicon.png"):
+        if os.path.exists(_p):
+            _icon = Image.open(_p)
+            break
+except Exception:
+    pass
 
 st.set_page_config(page_title="119 응급실 추천", page_icon=_icon, layout="wide")
 
@@ -87,7 +81,9 @@ DISTRICT_SETS = {
     "인접 구 포함 (서대문·마포·종로)": ["은평구", "서대문구", "마포구", "종로구"],
 }
 
-SATURATION_PENALTY_MIN = 20
+SATURATION_PENALTY_MIN = 20   # 프로파일 없을 때 폴백용 고정 페널티(분)
+SAT_MAX_PENALTY = 25          # 포화율 100%일 때 최대 페널티(분)
+SAT_MIN_BUCKET_N = 5          # 시간대 버킷 신뢰 최소 표본; 미만이면 전체 포화율 사용
 STALE_MIN = 60
 
 
@@ -168,10 +164,42 @@ def freshness(hvidate):
         return None, "갱신시각 미상"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_saturation_profile():
+    """수집 병상 시계열로 만든 병원별 포화 프로파일(JSON). 없으면 None."""
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "saturation_profile.json")
+        with open(path, encoding="utf-8") as fp:
+            return json.load(fp)
+    except Exception:
+        return None
+
+
+def _bucket_now():
+    return ["dawn", "morning", "afternoon", "night"][min(datetime.now().hour // 6, 3)]
+
+
+def saturation_penalty(hpid, profile, live_saturated):
+    """
+    포화 페널티(분)와 사용한 포화율 반환.
+    - 프로파일에 병원 있으면: (현재 시간대 버킷 표본 충분→버킷율, 아니면 전체율) × 최대페널티
+    - 없으면: 기존 고정 로직(현재 포화면 +20) 폴백
+    """
+    if profile:
+        h = profile.get("hospitals", {}).get(hpid)
+        if h:
+            b = h.get("buckets", {}).get(_bucket_now())
+            rate = b["rate"] if (b and b["n"] >= SAT_MIN_BUCKET_N) else h["overall_rate"]
+            return round(rate * SAT_MAX_PENALTY, 1), rate
+    return (SATURATION_PENALTY_MIN if live_saturated else 0), None
+
+
 def recommend(scene, ptype_name, districts, top_n=3):
     p = PATIENT_TYPES[ptype_name]
     beds = {h["hpid"]: h for h in load_beds(tuple(districts))}
     acc = load_acceptance(tuple(districts))
+    sat_profile = load_saturation_profile()
 
     results = []
     for loc in load_locations(tuple(districts)):
@@ -195,11 +223,13 @@ def recommend(scene, ptype_name, districts, top_n=3):
         if route is None:
             continue
         saturated = b["er_beds"] is not None and b["er_beds"] <= 0
-        score = route["duration_min"] + (SATURATION_PENALTY_MIN if saturated else 0)
+        sat_pen, sat_rate = saturation_penalty(loc["hpid"], sat_profile, saturated)
+        score = route["duration_min"] + sat_pen
         mago, ftxt = freshness(b.get("updated", ""))
         # 수용 가능한 질환 라벨 (이 환자유형 관련)
         accepted = [MKIOSK_LABELS[c] for c in p["req_codes"] if codes.get(c) == "Y"]
         results.append({**loc, **b, **route, "saturated": saturated, "score": score,
+                        "sat_pen": sat_pen, "sat_rate": sat_rate,
                         "mago": mago, "ftxt": ftxt, "accepted": accepted})
     results.sort(key=lambda x: x["score"])
     return results[:top_n], results
@@ -255,7 +285,6 @@ with st.sidebar:
 
 districts = DISTRICT_SETS[district_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
-st.sidebar.caption(f"🖼 {_icon_status}")
 
 st.markdown("""
 <div style="background:linear-gradient(90deg,#1D3557 0%,#457B9D 100%);
@@ -315,6 +344,9 @@ if go and scene:
                 st.warning(f"⚠️ 병상정보 {r['ftxt']} 갱신 — 전화확인 권장")
             else:
                 st.caption(f"🕐 병상정보 {r['ftxt']} 갱신")
+            # 수집 데이터 기반 혼잡도 가중(있을 때만)
+            if r.get("sat_rate") is not None and r.get("sat_pen"):
+                st.caption(f"📊 이 시간대 포화율 {r['sat_rate']:.0%} → 혼잡도 가중 +{r['sat_pen']:.0f}분")
             # 응급실 수용불가/진료불가 공지 (있으면 경고만, 추천에서 제외하진 않음)
             for w in msg_idx.get(r["hpid"], []):
                 if w.get("message"):
