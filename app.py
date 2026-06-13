@@ -22,7 +22,7 @@ from er_live import (get_er_beds, get_er_locations, get_er_acceptance,
                      MKIOSK_LABELS)
 from route_time import get_route_time
 
-st.set_page_config(page_title="119 응급실 추천", page_icon="🚑", layout="wide")
+st.set_page_config(page_title="119 응급실 추천", page_icon="favicon.png", layout="wide")
 
 # ──────────────────────────────────────────────
 # 환자 유형 정의
