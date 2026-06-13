@@ -164,9 +164,24 @@ def freshness(hvidate):
         return None, "갱신시각 미상"
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
+SAT_PROFILE_URL = ("https://raw.githubusercontent.com/fghdhfg/"
+                   "EMS_colletcer/main/data/saturation_profile.json")
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_saturation_profile():
-    """수집 병상 시계열로 만든 병원별 포화 프로파일(JSON). 없으면 None."""
+    """
+    수집 봇이 갱신하는 병원별 포화 프로파일.
+    1) collector repo의 최신본을 가져오고(자동 반영),
+    2) 실패하면 배포에 동봉한 로컬 saturation_profile.json,
+    3) 그것도 없으면 None(고정 +20 폴백).
+    """
+    try:
+        r = requests.get(SAT_PROFILE_URL, timeout=5)
+        if r.status_code == 200 and r.text.strip():
+            return r.json()
+    except Exception:
+        pass
     try:
         path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "saturation_profile.json")
