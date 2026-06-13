@@ -28,15 +28,24 @@ except ImportError:
     get_er_diss_messages = None
 from route_time import get_route_time
 
-# 페이지 아이콘: favicon.png가 있으면 이미지로, 없으면 이모지 폴백
+# 페이지 아이콘: favicon.png 로드 + 실패 원인 기록(사이드바 하단에 표시)
 _icon = "🚑"
+_icon_status = "favicon 미적용 — 이모지 사용 중"
+_here = os.path.dirname(os.path.abspath(__file__))
+_candidates = [os.path.join(_here, "favicon.png"), "favicon.png",
+               os.path.join(os.getcwd(), "favicon.png")]
 try:
     from PIL import Image
-    _icon_path = os.path.join(os.path.dirname(__file__), "favicon.png")
-    if os.path.exists(_icon_path):
-        _icon = Image.open(_icon_path)
-except Exception:
-    pass
+    _found = next((p for p in _candidates if os.path.exists(p)), None)
+    if _found:
+        _icon = Image.open(_found)
+        _icon_status = f"favicon 적용됨 ({_found})"
+    else:
+        _icon_status = "favicon.png 못 찾음 → " + " | ".join(_candidates)
+except ImportError:
+    _icon_status = "pillow 미설치 — requirements.txt 확인"
+except Exception as e:
+    _icon_status = f"favicon 로드 실패: {e}"
 
 st.set_page_config(page_title="119 응급실 추천", page_icon=_icon, layout="wide")
 
@@ -246,6 +255,7 @@ with st.sidebar:
 
 districts = DISTRICT_SETS[district_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
+st.sidebar.caption(f"🖼 {_icon_status}")
 
 st.markdown("""
 <div style="background:linear-gradient(90deg,#1D3557 0%,#457B9D 100%);
