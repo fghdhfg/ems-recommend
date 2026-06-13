@@ -10,6 +10,7 @@ v3 핵심
 - 환자 유형별 골든타임 목표시간 + 도착 가능 배지
 """
 
+import os
 from datetime import datetime
 
 import pandas as pd
@@ -19,10 +20,20 @@ import streamlit as st
 
 from config import DATA_GO_KR_KEY, KAKAO_REST_KEY
 from er_live import (get_er_beds, get_er_locations, get_er_acceptance,
-                     MKIOSK_LABELS)
+                     get_er_diss_messages, MKIOSK_LABELS)
 from route_time import get_route_time
 
-st.set_page_config(page_title="119 응급실 추천", page_icon="favicon.png", layout="wide")
+# 페이지 아이콘: favicon.png가 있으면 이미지로, 없으면 이모지 폴백
+_icon = "🚑"
+try:
+    from PIL import Image
+    _icon_path = os.path.join(os.path.dirname(__file__), "favicon.png")
+    if os.path.exists(_icon_path):
+        _icon = Image.open(_icon_path)
+except Exception:
+    pass
+
+st.set_page_config(page_title="119 응급실 추천", page_icon=_icon, layout="wide")
 
 # ──────────────────────────────────────────────
 # 환자 유형 정의
@@ -94,6 +105,23 @@ def load_acceptance(districts):
     for gu in districts:
         out.update(get_er_acceptance("서울특별시", gu))
     return out
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def load_diss_messages():
+    """
+    서울 전체 응급실 수용불가 공지 → {hpid: [메시지dict, ...]}.
+    공지는 구 단독으로 0건이 많아 시도 전체로 받아 hpid로 매칭한다.
+    메시지 API가 실패해도 추천 본기능은 죽지 않도록 빈 dict 반환.
+    """
+    try:
+        idx = {}
+        for m in get_er_diss_messages("서울특별시"):
+            if m.get("hpid"):
+                idx.setdefault(m["hpid"], []).append(m)
+        return idx
+    except Exception:
+        return {}
 
 
 @st.cache_data(ttl=600, show_spinner=False)
@@ -245,6 +273,8 @@ if go and scene:
         head += f"  ·  목표 {target_min}분 이내"
     st.subheader(head)
 
+    msg_idx = load_diss_messages()   # {hpid: [수용불가 공지...]}
+
     cols = st.columns(len(top))
     medals = ["🥇 1순위", "🥈 2순위", "🥉 3순위"]
     for col, medal, r in zip(cols, medals, top):
@@ -268,6 +298,10 @@ if go and scene:
                 st.warning(f"⚠️ 병상정보 {r['ftxt']} 갱신 — 전화확인 권장")
             else:
                 st.caption(f"🕐 병상정보 {r['ftxt']} 갱신")
+            # 응급실 수용불가/진료불가 공지 (있으면 경고만, 추천에서 제외하진 않음)
+            for w in msg_idx.get(r["hpid"], []):
+                if w.get("message"):
+                    st.warning(f"🚨 수용불가 공지: {w['message']}")
             if r["tel_er"]:
                 st.caption(f"☎ 응급실 직통 {r['tel_er']}")
 
@@ -307,6 +341,7 @@ if go and scene:
             "병원": r["name"], "예상이송(분)": r["duration_min"], "거리(km)": r["distance_km"],
             "응급실잔여": r["er_beds"], "상태": "포화" if r["saturated"] else "여유",
             "수용가능질환": ", ".join(r["accepted"]) or "-", "갱신": r["ftxt"],
+            "공지": "🚨" if msg_idx.get(r["hpid"]) else "",
         } for r in allr]), use_container_width=True, hide_index=True)
 else:
     st.info("왼쪽에서 현장 위치(GPS/주소/동)와 환자 유형을 고르고 **이송 병원 추천**을 눌러주세요.")
