@@ -13,6 +13,7 @@ v3 핵심
 import os
 import re
 import json
+import math
 from datetime import datetime
 
 import pandas as pd
@@ -146,18 +147,9 @@ PATIENT_TYPES = {
                       "note": "인공호흡기 가용 병원 우선"},
 }
 
-DONG_COORDS = {
-    "불광동": (126.9300, 37.6105), "응암동": (126.9215, 37.5984),
-    "녹번동": (126.9352, 37.6007), "갈현동": (126.9135, 37.6190),
-    "역촌동": (126.9145, 37.6060), "구산동": (126.9070, 37.6105),
-    "대조동": (126.9245, 37.6135), "신사동": (126.9095, 37.5915),
-    "증산동": (126.9095, 37.5835), "진관동(은평뉴타운)": (126.9227, 37.6395),
-}
-
-DISTRICT_SETS = {
-    "은평구만": ["은평구"],
-    "인접 구 포함 (서대문·마포·종로)": ["은평구", "서대문구", "마포구", "종로구"],
-}
+# 검색 반경 옵션 (현장 기준 직선거리). None = 서울 전체
+RADIUS_OPTIONS = {"반경 5km": 5.0, "반경 10km": 10.0, "서울 전체": None}
+ROUTE_CAP = 15   # 길찾기(카카오) 호출 상한 — 가까운 후보만 경로 계산
 
 SATURATION_PENALTY_MIN = 20   # 프로파일 없을 때 폴백용 고정 페널티(분)
 SAT_MAX_PENALTY = 25          # 포화율 100%일 때 최대 페널티(분)
@@ -169,30 +161,36 @@ STALE_MIN = 60
 # 데이터
 # ──────────────────────────────────────────────
 @st.cache_data(ttl=120, show_spinner=False)
-def load_beds(districts):
-    out = []
-    for gu in districts:
-        out.extend(get_er_beds("서울특별시", gu))
-    return out
+def load_beds():
+    """서울 전체 실시간 가용병상."""
+    return get_er_beds("서울특별시")
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def load_locations(districts):
+def load_locations():
+    """서울 전체 응급의료기관 + 좌표 (중복 hpid 제거)."""
     out, seen = [], set()
-    for gu in districts:
-        for h in get_er_locations("서울특별시", gu):
-            if h["hpid"] not in seen:
-                seen.add(h["hpid"])
-                out.append(h)
+    for h in get_er_locations("서울특별시"):
+        if h["hpid"] not in seen:
+            seen.add(h["hpid"])
+            out.append(h)
     return out
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def load_acceptance(districts):
-    out = {}
-    for gu in districts:
-        out.update(get_er_acceptance("서울특별시", gu))
-    return out
+def load_acceptance():
+    """서울 전체 중증질환 수용가능 정보."""
+    return get_er_acceptance("서울특별시")
+
+
+def haversine_km(lon1, lat1, lon2, lat2):
+    """두 좌표 간 직선거리(km)."""
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dl = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -344,18 +342,19 @@ def summarize_notice(msg: str) -> str:
     return f"{dept} · {s}" if dept else s
 
 
-def recommend(scene, ptype_name, districts, top_n=3):
+def recommend(scene, ptype_name, radius_km, top_n=3):
     p = PATIENT_TYPES[ptype_name]
-    beds = {h["hpid"]: h for h in load_beds(tuple(districts))}
-    acc = load_acceptance(tuple(districts))
+    beds = {h["hpid"]: h for h in load_beds()}
+    acc = load_acceptance()
     sat_profile = load_saturation_profile()
+    s_lon, s_lat = scene
 
-    results = []
-    for loc in load_locations(tuple(districts)):
+    # 1차 필터: 장비·수용가능·반경 → 직선거리순으로 가까운 곳만 추림
+    cand = []
+    for loc in load_locations():
         b = beds.get(loc["hpid"])
         if b is None:
             continue
-        # 장비 필수조건
         eq = p["req_equip"]
         if eq.get("ct") and b["ct"] != "Y":
             continue
@@ -363,11 +362,19 @@ def recommend(scene, ptype_name, districts, top_n=3):
             continue
         if eq.get("op_rooms_min") and (b["op_rooms"] or 0) < eq["op_rooms_min"]:
             continue
-        # 중증질환 수용가능: 필요한 코드 중 하나라도 Y면 통과
         codes = acc.get(loc["hpid"], {})
-        if p["req_codes"]:
-            if not any(codes.get(c) == "Y" for c in p["req_codes"]):
-                continue
+        if p["req_codes"] and not any(codes.get(c) == "Y" for c in p["req_codes"]):
+            continue
+        dist = haversine_km(s_lon, s_lat, loc["lon"], loc["lat"])
+        if radius_km is not None and dist > radius_km:
+            continue
+        cand.append((dist, loc, b, codes))
+    cand.sort(key=lambda x: x[0])
+    cand = cand[:ROUTE_CAP]   # 가까운 후보만 길찾기(카카오 호출 절약)
+
+    # 2차: 실제 경로시간 + 점수
+    results = []
+    for dist, loc, b, codes in cand:
         route = get_route_time(scene, (loc["lon"], loc["lat"]))
         if route is None:
             continue
@@ -375,7 +382,6 @@ def recommend(scene, ptype_name, districts, top_n=3):
         sat_pen, sat_rate = saturation_penalty(loc["hpid"], sat_profile, saturated)
         score = route["duration_min"] + sat_pen
         mago, ftxt = freshness(b.get("updated", ""))
-        # 수용 가능한 질환 라벨 (이 환자유형 관련)
         accepted = [MKIOSK_LABELS[c] for c in p["req_codes"] if codes.get(c) == "Y"]
         results.append({**loc, **b, **route, "saturated": saturated, "score": score,
                         "sat_pen": sat_pen, "sat_rate": sat_rate, "codes": codes,
@@ -390,11 +396,22 @@ def recommend(scene, ptype_name, districts, top_n=3):
 with st.sidebar:
     st.markdown("## 🚑 출동 정보")
 
-    loc_mode = st.radio("현장 위치 지정", ["📍 현재 위치(GPS)", "🔎 주소 검색", "📋 동 선택"])
+    loc_mode = st.radio("현장 위치 지정", ["🔎 주소·장소 검색", "📍 현재 위치(GPS)"])
     scene = None
     scene_label = ""
 
-    if loc_mode == "📍 현재 위치(GPS)":
+    if loc_mode == "🔎 주소·장소 검색":
+        addr = st.text_input("주소·장소명", placeholder="예: 강남역, 서울시청, 노원구청")
+        if addr:
+            geo = geocode(addr)
+            if geo:
+                scene = geo
+                scene_label = f"{addr}"
+                st.success("위치 확인됨")
+            else:
+                st.error("위치를 찾지 못했습니다. 다른 키워드로 시도해 보세요.")
+
+    else:  # GPS
         try:
             from streamlit_geolocation import streamlit_geolocation
             gps = streamlit_geolocation()
@@ -407,32 +424,16 @@ with st.sidebar:
         except ModuleNotFoundError:
             st.warning("GPS 기능 설치 필요:\npip install streamlit-geolocation")
 
-    elif loc_mode == "🔎 주소 검색":
-        addr = st.text_input("주소/건물명", placeholder="예: 은평구 불광동 또는 은평구청")
-        if addr:
-            geo = geocode(addr)
-            if geo:
-                scene = geo
-                scene_label = f"{addr} ({geo[1]:.4f}, {geo[0]:.4f})"
-                st.success("주소 변환됨")
-            else:
-                st.error("주소를 찾지 못했습니다.")
-
-    else:  # 동 선택
-        dong = st.selectbox("현장 위치 (은평구)", list(DONG_COORDS.keys()))
-        scene = DONG_COORDS[dong]
-        scene_label = f"{dong}"
-
     st.divider()
     ptype_name = st.selectbox("환자 유형", list(PATIENT_TYPES.keys()))
-    district_key = st.radio("검색 범위", list(DISTRICT_SETS.keys()), index=1)
+    radius_key = st.radio("검색 범위 (서울 전역)", list(RADIUS_OPTIONS.keys()), index=1)
     note = PATIENT_TYPES[ptype_name]["note"]
     if note:
         st.caption(f"ℹ️ {note}")
     go = st.button("이송 병원 추천", type="primary", use_container_width=True,
                    disabled=(scene is None))
 
-districts = DISTRICT_SETS[district_key]
+radius_km = RADIUS_OPTIONS[radius_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
 
 hc1, hc2 = st.columns([4, 1])
@@ -452,7 +453,7 @@ st.divider()
 if go and scene:
     with st.spinner("실시간 병상·수용가능·경로 조회 중..."):
         try:
-            top, allr = recommend(scene, ptype_name, districts)
+            top, allr = recommend(scene, ptype_name, radius_km)
         except Exception as e:
             st.error(f"조회 실패: {e}")
             st.stop()
@@ -564,7 +565,7 @@ if go and scene:
             "공지": "🚨" if msg_idx.get(r["hpid"]) else "",
         } for r in allr]), use_container_width=True, hide_index=True)
 else:
-    st.info("왼쪽에서 현장 위치(GPS/주소/동)와 환자 유형을 고르고 **이송 병원 추천**을 눌러주세요.")
+    st.info("왼쪽에서 현장 위치(주소·장소 검색 또는 GPS)와 환자 유형을 고르고 **이송 병원 추천**을 눌러주세요.")
 
 # ──────────────────────────────────────────────
 # 구급 빅데이터 근거 패널 (소방청 구급활동 25.5만건 분석)
