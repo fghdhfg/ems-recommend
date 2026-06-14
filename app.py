@@ -64,7 +64,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-_AMBULANCE_SVG = """
+_AMBULANCE_SVG = ("""
 <svg viewBox="0 0 380 160" width="100%" style="max-width:360px;margin:8px auto 2px;display:block;">
   <ellipse cx="190" cy="146" rx="150" ry="8" fill="#000" opacity=".06"/>
   <rect x="150" y="44" width="196" height="80" rx="12" fill="#fff" stroke="#E7E2DA" stroke-width="2"/>
@@ -85,24 +85,22 @@ _AMBULANCE_SVG = """
   <circle cx="100" cy="124" r="17" fill="#1A1A1A"/><circle cx="100" cy="124" r="7" fill="#B9BCC4"/>
   <circle cx="288" cy="124" r="17" fill="#1A1A1A"/><circle cx="288" cy="124" r="7" fill="#B9BCC4"/>
 </svg>
-"""
+""").replace("\n", " ")
 
 # 랜딩 ↔ 앱 단계 게이트
 if "stage" not in st.session_state:
     st.session_state.stage = "landing"
 
 if st.session_state.stage == "landing":
-    st.markdown(f"""
-    <div class="land-hero">
-      <div class="land-stripe"></div>
-      <div class="land-body">
-        {_AMBULANCE_SVG}
-        <div class="land-eyebrow">수용ON · 119 응급이송 도우미</div>
-        <div class="land-h1">전화 뺑뺑이, 그만.<br><b>지금 갈 수 있는 응급실</b>을 바로 찾기</div>
-        <div class="land-sub">위치와 환자 상태만 누르면, 받아주는 가장 빠른 응급실을 알려드려요.</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+    _hero = (
+        '<div class="land-hero"><div class="land-stripe"></div>'
+        '<div class="land-body">' + _AMBULANCE_SVG +
+        '<div class="land-eyebrow">수용ON · 119 응급이송 도우미</div>'
+        '<div class="land-h1">전화 뺑뺑이, 그만.<br><b>지금 갈 수 있는 응급실</b>을 바로 찾기</div>'
+        '<div class="land-sub">위치와 환자 상태만 누르면, 받아주는 가장 빠른 응급실을 알려드려요.</div>'
+        '</div></div>'
+    )
+    st.markdown(_hero, unsafe_allow_html=True)
 
     c = st.columns([1, 1.5, 1])[1]
     with c:
