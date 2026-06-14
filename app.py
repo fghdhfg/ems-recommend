@@ -287,6 +287,26 @@ def saturation_penalty(hpid, profile, live_saturated):
     return (SATURATION_PENALTY_MIN if live_saturated else 0), None
 
 
+# 주요 수술/시술 카테고리 (MKioskTy 코드 묶음) — 카드 가능/불가 표시용
+KEY_SURGERY = [
+    ("심근경색 재관류", [1]), ("뇌경색 재관류", [2]), ("뇌출혈 수술", [3, 4]),
+    ("대동맥 응급", [5, 6]), ("복부 응급수술", [9]), ("중증화상", [19]),
+    ("사지접합", [20, 21]), ("응급투석", [22, 23]),
+]
+
+
+def surgery_status(codes: dict):
+    """병원 수용가능 코드(Y/N) → (가능목록, 불가목록). 정보없음은 제외."""
+    poss, impo = [], []
+    for label, cs in KEY_SURGERY:
+        vals = [codes.get(c, "") for c in cs]
+        if any(v == "Y" for v in vals):
+            poss.append(label)
+        elif any(v == "N" for v in vals):
+            impo.append(label)
+    return poss, impo
+
+
 def recommend(scene, ptype_name, districts, top_n=3):
     p = PATIENT_TYPES[ptype_name]
     beds = {h["hpid"]: h for h in load_beds(tuple(districts))}
@@ -321,7 +341,7 @@ def recommend(scene, ptype_name, districts, top_n=3):
         # 수용 가능한 질환 라벨 (이 환자유형 관련)
         accepted = [MKIOSK_LABELS[c] for c in p["req_codes"] if codes.get(c) == "Y"]
         results.append({**loc, **b, **route, "saturated": saturated, "score": score,
-                        "sat_pen": sat_pen, "sat_rate": sat_rate,
+                        "sat_pen": sat_pen, "sat_rate": sat_rate, "codes": codes,
                         "mago": mago, "ftxt": ftxt, "accepted": accepted})
     results.sort(key=lambda x: x["score"])
     return results[:top_n], results
@@ -438,10 +458,19 @@ if go and scene:
             # 수집 데이터 기반 혼잡도 가중(있을 때만)
             if r.get("sat_rate") is not None and r.get("sat_pen"):
                 st.caption(f"📊 이 시간대 포화율 {r['sat_rate']:.0%} → 혼잡도 가중 +{r['sat_pen']:.0f}분")
-            # 응급실 수용불가/진료불가 공지 (있으면 경고만, 추천에서 제외하진 않음)
+            # 주요 수술/시술 수용 가능·불가 (MKioskTy 기반)
+            poss, impo = surgery_status(r.get("codes", {}))
+            if poss or impo:
+                with st.expander("🏥 수용 가능 진료 (수술·시술)", expanded=True):
+                    if poss:
+                        st.markdown("✅ **가능** : " + " · ".join(poss))
+                    if impo:
+                        st.markdown("🚫 **불가** : " + " · ".join(impo))
+                    st.caption("출처: 국립중앙의료원 중증질환 수용가능 정보(실시간)")
+            # 응급실이 띄운 진료불가 공지(자유 텍스트)는 참고용으로만 작게
             for w in msg_idx.get(r["hpid"], []):
                 if w.get("message"):
-                    st.warning(f"🚨 수용불가 공지: {w['message']}")
+                    st.caption(f"🚨 병원 공지: {w['message']}")
             if r["tel_er"]:
                 st.caption(f"☎ 응급실 직통 {r['tel_er']}")
 
