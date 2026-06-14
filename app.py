@@ -44,6 +44,85 @@ except Exception:
 st.set_page_config(page_title="수용ON — 응급실 추천", page_icon=_icon, layout="wide")
 
 # ──────────────────────────────────────────────
+# 공통 스타일 (구급차 톤: 흰색·빨강·연두)
+# ──────────────────────────────────────────────
+st.markdown("""
+<style>
+.land-hero{background:#fff;border:1px solid #F4D9CC;border-radius:20px;overflow:hidden;
+  margin:2px 0 14px;box-shadow:0 2px 12px rgba(228,0,43,.05);}
+.land-stripe{height:10px;background:repeating-linear-gradient(135deg,
+  #E4002B 0 20px,#C2E000 20px 40px);}
+.land-body{padding:26px 24px 28px;text-align:center;}
+.land-eyebrow{font-size:12px;font-weight:800;letter-spacing:.16em;color:#E4002B;margin-bottom:12px;}
+.land-h1{font-size:34px;line-height:1.18;font-weight:800;color:#16181D;margin:0 0 10px;}
+.land-h1 b{color:#E4002B;}
+.land-sub{font-size:16px;color:#555;margin:2px 0 0;}
+.app-head{display:flex;align-items:center;gap:9px;font-size:18px;color:#16181D;padding:4px 0 2px;}
+.app-head .dot{width:10px;height:10px;border-radius:50%;background:#E4002B;display:inline-block;
+  box-shadow:0 0 0 4px rgba(228,0,43,.15);}
+.app-head small{color:#6B7280;font-weight:400;}
+</style>
+""", unsafe_allow_html=True)
+
+_AMBULANCE_SVG = """
+<svg viewBox="0 0 380 160" width="100%" style="max-width:360px;margin:8px auto 2px;display:block;">
+  <ellipse cx="190" cy="146" rx="150" ry="8" fill="#000" opacity=".06"/>
+  <rect x="150" y="44" width="196" height="80" rx="12" fill="#fff" stroke="#E7E2DA" stroke-width="2"/>
+  <path d="M150 66 L78 66 Q52 66 44 92 L42 124 L150 124 Z" fill="#fff" stroke="#E7E2DA" stroke-width="2"/>
+  <path d="M82 72 L140 72 L140 96 L50 96 Q56 74 82 72 Z" fill="#D2EAF6"/>
+  <rect x="166" y="58" width="46" height="30" rx="5" fill="#D2EAF6"/>
+  <rect x="44" y="104" width="302" height="20" rx="2" fill="#C2E000"/>
+  <path d="M50 96 H176 l10 -16 l9 28 l8 -12 H342" fill="none" stroke="#E4002B"
+        stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="250" y="86" font-size="26" font-weight="900" fill="#E4002B"
+        font-family="Arial, sans-serif" text-anchor="middle">119</text>
+  <g transform="translate(300,54)">
+    <rect x="0" y="9" width="34" height="12" rx="3" fill="#E4002B"/>
+    <rect x="11" y="-2" width="12" height="34" rx="3" fill="#E4002B"/>
+  </g>
+  <rect x="200" y="36" width="40" height="10" rx="3" fill="#FFB400"/>
+  <rect x="200" y="36" width="20" height="10" rx="3" fill="#E4002B"/>
+  <circle cx="100" cy="124" r="17" fill="#1A1A1A"/><circle cx="100" cy="124" r="7" fill="#B9BCC4"/>
+  <circle cx="288" cy="124" r="17" fill="#1A1A1A"/><circle cx="288" cy="124" r="7" fill="#B9BCC4"/>
+</svg>
+"""
+
+# 랜딩 ↔ 앱 단계 게이트
+if "stage" not in st.session_state:
+    st.session_state.stage = "landing"
+
+if st.session_state.stage == "landing":
+    st.markdown(f"""
+    <div class="land-hero">
+      <div class="land-stripe"></div>
+      <div class="land-body">
+        {_AMBULANCE_SVG}
+        <div class="land-eyebrow">수용ON · 119 응급이송 도우미</div>
+        <div class="land-h1">전화 뺑뺑이, 그만.<br><b>지금 갈 수 있는 응급실</b>을 바로 찾기</div>
+        <div class="land-sub">위치와 환자 상태만 누르면, 받아주는 가장 빠른 응급실을 알려드려요.</div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    c = st.columns([1, 1.5, 1])[1]
+    with c:
+        if st.button("🚑 응급실 찾기", type="primary", use_container_width=True):
+            st.session_state.stage = "app"
+            st.rerun()
+
+    with st.expander("이 서비스가 왜 필요한가요?  —  데이터로 보는 이유"):
+        st.caption("소방청 구급활동정보 분석 (2025년 상반기 · 서울 25개 소방서 · 약 25.5만 건)")
+        a, b, c2, d = st.columns(4)
+        a.metric("골든타임 위험 출동", "21.9%", "5건 중 1건")
+        b.metric("심정지·호흡정지", "7,145건", "1분이 생존 좌우")
+        c2.metric("60세 이상 고령", "41.8%", "10.7만 건")
+        d.metric("집에서 발생", "49.7%", "12.7만 건")
+        st.caption("분초를 다투는 응급환자가 전체의 1/5. 현재는 구급대원이 현장에서 병원마다 "
+                   "전화해 수용 여부를 확인하느라 골든타임을 소모한다. '수용ON'은 이 과정을 "
+                   "실시간 수용가능 병원 자동 추천으로 대체한다.")
+    st.stop()
+
+# ──────────────────────────────────────────────
 # 환자 유형 정의
 #   req_codes: 이 질환 수용가능(MKioskTy=Y)이 필요한 코드들 (하나라도 Y면 통과)
 #   req_equip: 장비 필수조건 (가용병상 API)
@@ -301,40 +380,16 @@ with st.sidebar:
 districts = DISTRICT_SETS[district_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
 
-st.markdown("""
-<style>
-.suyong-hero{background:#FFFFFF;border:1px solid #FBE0D4;border-radius:16px;
-  overflow:hidden;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
-.suyong-stripe{height:9px;background:repeating-linear-gradient(135deg,
-  #E4002B 0 18px,#FFB400 18px 36px);}
-.suyong-body{padding:22px 26px 20px;}
-.suyong-eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;
-  color:#E4002B;margin-bottom:10px;}
-.suyong-h1{font-size:30px;line-height:1.2;font-weight:800;color:#16181D;margin:0 0 8px;}
-.suyong-h1 b{color:#E4002B;}
-.suyong-sub{font-size:15px;color:#4B4B4B;margin:0 0 16px;max-width:700px;}
-.suyong-steps{display:flex;gap:10px;flex-wrap:wrap;}
-.suyong-step{display:flex;align-items:center;gap:8px;background:#FFF6EC;
-  border:1px solid #FFE2BC;border-radius:999px;padding:7px 14px;
-  font-size:13px;font-weight:600;color:#7A4B00;}
-.suyong-step .n{display:inline-flex;width:20px;height:20px;border-radius:50%;
-  background:#E4002B;color:#fff;font-size:12px;font-weight:800;
-  align-items:center;justify-content:center;}
-</style>
-<div class="suyong-hero">
-  <div class="suyong-stripe"></div>
-  <div class="suyong-body">
-    <div class="suyong-eyebrow">🚑 수용ON · 119 응급이송 의사결정 지원</div>
-    <div class="suyong-h1">전화 돌리지 마세요.<br><b>지금 받아주는 응급실</b>을 바로 찾아드립니다.</div>
-    <div class="suyong-sub">현장 위치와 환자 상태만 입력하면, 수용 가능한 가장 빠른 응급실을 자동으로 추천합니다.</div>
-    <div class="suyong-steps">
-      <span class="suyong-step"><span class="n">1</span> 위치 입력</span>
-      <span class="suyong-step"><span class="n">2</span> 환자 상태 선택</span>
-      <span class="suyong-step"><span class="n">3</span> 받아주는 응급실 추천</span>
-    </div>
-  </div>
-</div>
-""", unsafe_allow_html=True)
+hc1, hc2 = st.columns([4, 1])
+with hc1:
+    st.markdown("<div class='app-head'><span class='dot'></span> "
+                "<b>수용ON</b> &nbsp;<small>받아주는 가장 빠른 응급실</small></div>",
+                unsafe_allow_html=True)
+with hc2:
+    if st.button("← 처음으로", use_container_width=True):
+        st.session_state.stage = "landing"
+        st.rerun()
+st.divider()
 
 # ──────────────────────────────────────────────
 # 추천
@@ -437,20 +492,7 @@ else:
 # 구급 빅데이터 근거 패널 (소방청 구급활동 25.5만건 분석)
 # ──────────────────────────────────────────────
 st.divider()
-with st.expander("📊 서비스 근거 데이터 — 왜 '수용ON'이 필요한가", expanded=False):
-    st.caption("소방청 구급활동정보 분석 (2025년 상반기, 서울 25개 소방서 · 약 25.5만 건)")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("골든타임 위험 출동", "21.9%", "5건 중 1건")
-    m2.metric("심정지·호흡정지", "7,145건", "1분이 생존 좌우")
-    m3.metric("60세 이상 고령", "41.8%", "10.7만 건")
-    m4.metric("집에서 발생", "49.7%", "12.7만 건")
-    st.caption(
-        "분초를 다투는 응급환자가 전체의 1/5. 현재는 구급대원이 현장에서 병원마다 전화해 "
-        "수용 가능 여부를 확인하느라 골든타임을 소모한다. '수용ON'은 이 과정을 "
-        "**실시간 수용가능 병원 자동 추천**으로 대체한다."
-    )
-
-    st.markdown("**지금 서울 응급실 포화 현황**")
+with st.expander("📊 지금 서울 응급실 포화 현황 (실시간)", expanded=False):
     try:
         seoul = get_er_beds("서울특별시")
         rows = [{"병원": h["name"], "잔여병상": h["er_beds"]}
