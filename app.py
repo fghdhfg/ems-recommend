@@ -41,7 +41,7 @@ try:
 except Exception:
     pass
 
-st.set_page_config(page_title="119 응급실 추천", page_icon=_icon, layout="wide")
+st.set_page_config(page_title="수용ON — 응급실 추천", page_icon=_icon, layout="wide")
 
 # ──────────────────────────────────────────────
 # 환자 유형 정의
@@ -302,16 +302,39 @@ districts = DISTRICT_SETS[district_key]
 target_min = PATIENT_TYPES[ptype_name]["target_min"]
 
 st.markdown("""
-<div style="background:linear-gradient(90deg,#1D3557 0%,#457B9D 100%);
-            padding:18px 24px;border-radius:12px;margin-bottom:8px;
-            border-left:8px solid #E63946;">
-  <span style="font-size:30px;font-weight:800;color:#FFFFFF;">🚑 119 응급이송 — 응급실 추천</span><br>
-  <span style="font-size:14px;color:#A8DADC;">
-    전화 뺑뺑이 없이, 받아줄 수 있는 가장 빠른 응급실을 즉시 추천
-  </span>
+<style>
+.suyong-hero{background:#FFFFFF;border:1px solid #FBE0D4;border-radius:16px;
+  overflow:hidden;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.suyong-stripe{height:9px;background:repeating-linear-gradient(135deg,
+  #E4002B 0 18px,#FFB400 18px 36px);}
+.suyong-body{padding:22px 26px 20px;}
+.suyong-eyebrow{font-size:12px;font-weight:800;letter-spacing:.14em;
+  color:#E4002B;margin-bottom:10px;}
+.suyong-h1{font-size:30px;line-height:1.2;font-weight:800;color:#16181D;margin:0 0 8px;}
+.suyong-h1 b{color:#E4002B;}
+.suyong-sub{font-size:15px;color:#4B4B4B;margin:0 0 16px;max-width:700px;}
+.suyong-steps{display:flex;gap:10px;flex-wrap:wrap;}
+.suyong-step{display:flex;align-items:center;gap:8px;background:#FFF6EC;
+  border:1px solid #FFE2BC;border-radius:999px;padding:7px 14px;
+  font-size:13px;font-weight:600;color:#7A4B00;}
+.suyong-step .n{display:inline-flex;width:20px;height:20px;border-radius:50%;
+  background:#E4002B;color:#fff;font-size:12px;font-weight:800;
+  align-items:center;justify-content:center;}
+</style>
+<div class="suyong-hero">
+  <div class="suyong-stripe"></div>
+  <div class="suyong-body">
+    <div class="suyong-eyebrow">🚑 수용ON · 119 응급이송 의사결정 지원</div>
+    <div class="suyong-h1">전화 돌리지 마세요.<br><b>지금 받아주는 응급실</b>을 바로 찾아드립니다.</div>
+    <div class="suyong-sub">현장 위치와 환자 상태만 입력하면, 수용 가능한 가장 빠른 응급실을 자동으로 추천합니다.</div>
+    <div class="suyong-steps">
+      <span class="suyong-step"><span class="n">1</span> 위치 입력</span>
+      <span class="suyong-step"><span class="n">2</span> 환자 상태 선택</span>
+      <span class="suyong-step"><span class="n">3</span> 받아주는 응급실 추천</span>
+    </div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
-st.caption("실시간 가용병상·중증질환 수용가능(국립중앙의료원) × 실시간 경로(카카오) · 시연: 서울 은평구")
 
 # ──────────────────────────────────────────────
 # 추천
@@ -414,36 +437,32 @@ else:
 # 구급 빅데이터 근거 패널 (소방청 구급활동 25.5만건 분석)
 # ──────────────────────────────────────────────
 st.divider()
-st.subheader("왜 이 서비스가 필요한가 — 서울 구급출동 25.5만 건 분석")
-st.caption("소방안전 빅데이터 플랫폼·소방청 구급활동정보 (2025년 상반기, 서울 25개 소방서)")
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("골든타임 위험 출동", "21.9%", "5.6만 건 / 5건 중 1건")
-m2.metric("심정지·호흡정지", "7,145건", "1분이 생존 좌우")
-m3.metric("60세 이상 고령", "41.8%", "10.7만 건")
-m4.metric("집에서 발생", "49.7%", "12.7만 건")
-st.caption(
-    "분초를 다투는 응급환자가 전체의 1/5. 현재는 구급대원이 현장에서 병원마다 전화해 "
-    "수용 가능 여부를 확인하느라 골든타임을 소모한다. 본 서비스는 이 과정을 "
-    "**실시간 수용가능 병원 자동 추천**으로 대체한다."
-)
+with st.expander("📊 서비스 근거 데이터 — 왜 '수용ON'이 필요한가", expanded=False):
+    st.caption("소방청 구급활동정보 분석 (2025년 상반기, 서울 25개 소방서 · 약 25.5만 건)")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("골든타임 위험 출동", "21.9%", "5건 중 1건")
+    m2.metric("심정지·호흡정지", "7,145건", "1분이 생존 좌우")
+    m3.metric("60세 이상 고령", "41.8%", "10.7만 건")
+    m4.metric("집에서 발생", "49.7%", "12.7만 건")
+    st.caption(
+        "분초를 다투는 응급환자가 전체의 1/5. 현재는 구급대원이 현장에서 병원마다 전화해 "
+        "수용 가능 여부를 확인하느라 골든타임을 소모한다. '수용ON'은 이 과정을 "
+        "**실시간 수용가능 병원 자동 추천**으로 대체한다."
+    )
 
-# ──────────────────────────────────────────────
-# 서울 포화 현황
-# ──────────────────────────────────────────────
-st.divider()
-st.subheader("지금 서울 응급실 포화 현황")
-try:
-    seoul = get_er_beds("서울특별시")
-    rows = [{"병원": h["name"], "잔여병상": h["er_beds"]}
-            for h in seoul if h["er_beds"] is not None]
-    df = pd.DataFrame(rows).sort_values("잔여병상")
-    nsat = int((df["잔여병상"] <= 0).sum())
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        st.metric("응급의료기관", f"{len(df)}곳")
-        st.metric("포화(잔여 0 이하)", f"{nsat}곳")
-    with c2:
-        st.bar_chart(df.set_index("병원")["잔여병상"], height=260)
-    st.caption("음수 = 정원 초과 수용 중.")
-except Exception as e:
-    st.caption(f"포화 현황 로드 실패: {e}")
+    st.markdown("**지금 서울 응급실 포화 현황**")
+    try:
+        seoul = get_er_beds("서울특별시")
+        rows = [{"병원": h["name"], "잔여병상": h["er_beds"]}
+                for h in seoul if h["er_beds"] is not None]
+        df = pd.DataFrame(rows).sort_values("잔여병상")
+        nsat = int((df["잔여병상"] <= 0).sum())
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            st.metric("응급의료기관", f"{len(df)}곳")
+            st.metric("포화(잔여 0 이하)", f"{nsat}곳")
+        with c2:
+            st.bar_chart(df.set_index("병원")["잔여병상"], height=260)
+        st.caption("음수 = 정원 초과 수용 중.")
+    except Exception as e:
+        st.caption(f"포화 현황 로드 실패: {e}")

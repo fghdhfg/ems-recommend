@@ -1,0 +1,8 @@
+[theme]
+# 구급차 톤: 흰색 바탕 · 긴급 빨강 · 주의 노랑(앰버)
+base = "light"
+primaryColor = "#E4002B"            # 긴급 빨강 (버튼·슬라이더·강조)
+backgroundColor = "#FFFFFF"         # 메인 흰색
+secondaryBackgroundColor = "#FFF6EC" # 사이드바·카드: 따뜻한 크림(노랑 무드)
+textColor = "#16181D"               # 본문 잉크
+font = "sans serif"
