@@ -11,6 +11,7 @@ v3 핵심
 """
 
 import os
+import re
 import json
 from datetime import datetime
 
@@ -132,7 +133,7 @@ PATIENT_TYPES = {
     "심정지(CPR중)": {"req_codes": [],        "req_equip": {},                "target_min": 10,
                       "note": "분 단위가 생존율 좌우 — 최단시간 우선"},
     "심근경색 의심": {"req_codes": [1],       "req_equip": {},                "target_min": 30,
-                      "note": "재관류중재술(MKioskTy1) 가능 병원으로 직행"},
+                      "note": "심근경색 재관류 시술 가능 병원으로 직행"},
     "뇌졸중 의심":   {"req_codes": [2, 3, 4], "req_equip": {"ct": "Y"},       "target_min": 30,
                       "note": "뇌경색 재관류 또는 뇌출혈수술 가능 + CT 필수"},
     "중증외상":      {"req_codes": [9, 20],   "req_equip": {"op_rooms_min": 1}, "target_min": 30,
@@ -307,6 +308,42 @@ def surgery_status(codes: dict):
     return poss, impo
 
 
+# 공지에서 걷어낼 상투 문구
+_NOTICE_NOISE = [
+    "요일별 상세 운영 시간이 달라 내원 전 문의부탁드립니다", "요일별 상세 운영",
+    "수용여부 사전 확인", "필요 시 문의 바랍니다", "필요시 문의 바랍니다",
+    "내원 전 문의부탁드립니다", "진료시간 1시간전 접수 마감", "본원",
+]
+
+
+def summarize_notice(msg: str) -> str:
+    """병원 공지(자유 텍스트) → '과목 · 핵심' 짧은 한 줄."""
+    s = (msg or "").strip()
+    s = re.sub(r"\d{2,4}-\d{3,4}-\d{4}", "", s)          # 전화번호 제거
+    s = s.replace("★", " ").replace("☎", " ")
+    dept = ""
+    m = re.match(r"\s*\[([^\]]{1,24})\]", s) or re.match(r"\s*\(([^\)]{1,24})\)", s)
+    if m:
+        dept = re.sub(r"\([^)]*\)", "", m.group(1)).strip()  # dept 내부 괄호 부연 제거
+        s = s[m.end():]
+    for n in _NOTICE_NOISE:
+        s = s.replace(n, " ")
+    s = re.sub(r"\([^)]*\)", " ", s)                    # 괄호 부연 제거
+    s = re.sub(r"\[[^\]]*\]", " ", s)
+    s = re.sub(r"[\[\]\(\)]", " ", s)                   # 남은 괄호 찌꺼기 제거
+    if dept and s.lstrip().startswith(dept):            # 과목명 중복 제거
+        s = s.lstrip()[len(dept):]
+    s = re.sub(r"^\s*진료\s*", "", s)                    # 앞쪽 '진료' 중복 제거
+    s = re.sub(r"\s*/\s*", " / ", s)                    # 슬래시 간격 정리
+    s = re.sub(r"\s+", " ", s).strip(" -·,./")
+    if len(s) > 22:
+        s = s[:22].rstrip() + "…"
+    # 본문이 없으면(과목만 있거나 텍스트가 비면) 표시 안 함
+    if not s:
+        return ""
+    return f"{dept} · {s}" if dept else s
+
+
 def recommend(scene, ptype_name, districts, top_n=3):
     p = PATIENT_TYPES[ptype_name]
     beds = {h["hpid"]: h for h in load_beds(tuple(districts))}
@@ -440,7 +477,11 @@ if go and scene:
             st.markdown(f"**{r['name']}**")
             st.metric("예상 이송시간", f"{r['duration_min']}분", f"{r['distance_km']}km")
             if target_min is not None:
-                if r["duration_min"] <= target_min:
+                in_time = r["duration_min"] <= target_min
+                if r["saturated"]:
+                    when = "내 도착 가능하나" if in_time else f"초과(+{r['duration_min'] - target_min:.0f}분) +"
+                    st.markdown(f"🔴 **목표시간 {when} 현재 포화 — 수용 어려울 수 있음**")
+                elif in_time:
                     st.markdown("🟢 **목표시간 내 도착 가능**")
                 else:
                     st.markdown(f"🔴 **목표시간 초과 (+{r['duration_min'] - target_min:.0f}분)**")
@@ -467,10 +508,20 @@ if go and scene:
                     if impo:
                         st.markdown("🚫 **불가** : " + " · ".join(impo))
                     st.caption("출처: 국립중앙의료원 중증질환 수용가능 정보(실시간)")
-            # 응급실이 띄운 진료불가 공지(자유 텍스트)는 참고용으로만 작게
+            # 병원 공지(자유 텍스트) → 간소화·중복제거 후 접이식으로
+            notices, seen = [], set()
             for w in msg_idx.get(r["hpid"], []):
                 if w.get("message"):
-                    st.caption(f"🚨 병원 공지: {w['message']}")
+                    s = summarize_notice(w["message"])
+                    if s and s not in seen:
+                        seen.add(s)
+                        notices.append(s)
+            if notices:
+                with st.expander(f"🚨 병원 공지 {len(notices)}건", expanded=False):
+                    for s in notices[:6]:
+                        st.caption("• " + s)
+                    if len(notices) > 6:
+                        st.caption(f"… 외 {len(notices) - 6}건")
             if r["tel_er"]:
                 st.caption(f"☎ 응급실 직통 {r['tel_er']}")
 
