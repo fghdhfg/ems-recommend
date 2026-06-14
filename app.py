@@ -63,6 +63,15 @@ st.markdown("""
 .app-head .dot{width:10px;height:10px;border-radius:50%;background:#E4002B;display:inline-block;
   box-shadow:0 0 0 4px rgba(228,0,43,.15);}
 .app-head small{color:#6B7280;font-weight:400;}
+.wiz-steps{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 18px;}
+.wiz-pill{font-size:13px;font-weight:700;color:#9aa0aa;background:#F3F4F6;
+  border-radius:999px;padding:6px 14px;}
+.wiz-pill.on{color:#fff;background:#E4002B;}
+.wiz-pill.done{color:#7A4B00;background:#FFE9C7;}
+.wiz-h{font-size:30px;font-weight:800;color:#16181D;margin:10px 0 6px;line-height:1.25;}
+.wiz-sub{font-size:16px;color:#666;margin:0 0 18px;}
+.wiz-loc{display:inline-block;font-size:14px;font-weight:700;color:#7A4B00;
+  background:#FFF6EC;border:1px solid #FFE2BC;border-radius:999px;padding:6px 14px;margin-bottom:6px;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -391,50 +400,12 @@ def recommend(scene, ptype_name, radius_km, top_n=3):
 
 
 # ──────────────────────────────────────────────
-# 사이드바 — 현장 위치 지정 (GPS / 주소 / 동)
+# 앱 화면 — 단계별 위저드 (① 위치 → ② 환자 → ③ 추천)
 # ──────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("## 🚑 출동 정보")
-
-    loc_mode = st.radio("현장 위치 지정", ["🔎 주소·장소 검색", "📍 현재 위치(GPS)"])
-    scene = None
-    scene_label = ""
-
-    if loc_mode == "🔎 주소·장소 검색":
-        addr = st.text_input("주소·장소명", placeholder="예: 강남역, 서울시청, 노원구청")
-        if addr:
-            geo = geocode(addr)
-            if geo:
-                scene = geo
-                scene_label = f"{addr}"
-                st.success("위치 확인됨")
-            else:
-                st.error("위치를 찾지 못했습니다. 다른 키워드로 시도해 보세요.")
-
-    else:  # GPS
-        try:
-            from streamlit_geolocation import streamlit_geolocation
-            gps = streamlit_geolocation()
-            if gps and gps.get("latitude"):
-                scene = (gps["longitude"], gps["latitude"])
-                scene_label = f"현재 위치 ({gps['latitude']:.4f}, {gps['longitude']:.4f})"
-                st.success("위치 확인됨")
-            else:
-                st.caption("위 아이콘을 눌러 위치 권한을 허용하세요.")
-        except ModuleNotFoundError:
-            st.warning("GPS 기능 설치 필요:\npip install streamlit-geolocation")
-
-    st.divider()
-    ptype_name = st.selectbox("환자 유형", list(PATIENT_TYPES.keys()))
-    radius_key = st.radio("검색 범위 (서울 전역)", list(RADIUS_OPTIONS.keys()), index=1)
-    note = PATIENT_TYPES[ptype_name]["note"]
-    if note:
-        st.caption(f"ℹ️ {note}")
-    go = st.button("이송 병원 추천", type="primary", use_container_width=True,
-                   disabled=(scene is None))
-
-radius_km = RADIUS_OPTIONS[radius_key]
-target_min = PATIENT_TYPES[ptype_name]["target_min"]
+for _k, _v in {"app_step": 1, "scene": None, "scene_label": "",
+               "ptype_name": list(PATIENT_TYPES.keys())[0],
+               "radius_key": list(RADIUS_OPTIONS.keys())[1]}.items():
+    st.session_state.setdefault(_k, _v)
 
 hc1, hc2 = st.columns([4, 1])
 with hc1:
@@ -444,13 +415,93 @@ with hc1:
 with hc2:
     if st.button("← 처음으로", use_container_width=True):
         st.session_state.stage = "landing"
+        st.session_state.app_step = 1
         st.rerun()
-st.divider()
 
-# ──────────────────────────────────────────────
-# 추천
-# ──────────────────────────────────────────────
-if go and scene:
+_cur = st.session_state.app_step
+_labels = ["① 현장 위치", "② 환자 상태", "③ 이송 병원 추천"]
+_pills = "".join(
+    f"<span class='wiz-pill {'on' if i + 1 == _cur else ('done' if i + 1 < _cur else '')}'>{t}</span>"
+    for i, t in enumerate(_labels))
+st.markdown(f"<div class='wiz-steps'>{_pills}</div>", unsafe_allow_html=True)
+
+# ===== STEP 1: 현장 위치 =====
+if _cur == 1:
+    st.markdown("<div class='wiz-h'>현장 위치를 입력하세요</div>", unsafe_allow_html=True)
+    st.markdown("<div class='wiz-sub'>주소·장소를 검색하거나, 현재 위치(GPS)를 사용하세요.</div>",
+                unsafe_allow_html=True)
+    _mode = st.radio("위치 지정 방법", ["🔎 주소·장소 검색", "📍 현재 위치(GPS)"],
+                     horizontal=True, label_visibility="collapsed")
+    if _mode == "🔎 주소·장소 검색":
+        _addr = st.text_input("주소·장소명", placeholder="예: 강남역, 서울시청, 노원구청")
+        if _addr:
+            _geo = geocode(_addr)
+            if _geo:
+                st.session_state.scene = _geo
+                st.session_state.scene_label = _addr
+                st.success(f"✅ 위치 확인: {_addr}")
+            else:
+                st.error("위치를 찾지 못했습니다. 다른 키워드로 시도해 보세요.")
+    else:
+        try:
+            from streamlit_geolocation import streamlit_geolocation
+            _gps = streamlit_geolocation()
+            if _gps and _gps.get("latitude"):
+                st.session_state.scene = (_gps["longitude"], _gps["latitude"])
+                st.session_state.scene_label = (
+                    f"현재 위치 ({_gps['latitude']:.4f}, {_gps['longitude']:.4f})")
+                st.success("✅ 현재 위치 확인됨")
+            else:
+                st.caption("위 아이콘을 눌러 위치 권한을 허용하세요.")
+        except ModuleNotFoundError:
+            st.warning("GPS 기능 설치 필요: pip install streamlit-geolocation")
+    if st.session_state.scene:
+        st.caption(f"📍 선택됨: {st.session_state.scene_label}")
+    if st.button("다음 ▶", type="primary", use_container_width=True,
+                 disabled=(st.session_state.scene is None)):
+        st.session_state.app_step = 2
+        st.rerun()
+
+# ===== STEP 2: 환자 상태 =====
+elif _cur == 2:
+    st.markdown(f"<div class='wiz-loc'>📍 {st.session_state.scene_label}</div>",
+                unsafe_allow_html=True)
+    st.markdown("<div class='wiz-h'>환자 상태를 선택하세요</div>", unsafe_allow_html=True)
+    _ptypes = list(PATIENT_TYPES.keys())
+    st.session_state.ptype_name = st.selectbox(
+        "환자 유형", _ptypes, index=_ptypes.index(st.session_state.ptype_name))
+    _note = PATIENT_TYPES[st.session_state.ptype_name]["note"]
+    if _note:
+        st.info(f"ℹ️ {_note}")
+    _rk = list(RADIUS_OPTIONS.keys())
+    st.session_state.radius_key = st.radio(
+        "검색 범위 (서울 전역)", _rk, index=_rk.index(st.session_state.radius_key),
+        horizontal=True)
+    _b1, _b2 = st.columns(2)
+    with _b1:
+        if st.button("◀ 이전", use_container_width=True):
+            st.session_state.app_step = 1
+            st.rerun()
+    with _b2:
+        if st.button("🚑 응급실 추천 ▶", type="primary", use_container_width=True):
+            st.session_state.app_step = 3
+            st.rerun()
+
+# ===== STEP 3: 이송 병원 추천 =====
+else:
+    scene = st.session_state.scene
+    scene_label = st.session_state.scene_label
+    ptype_name = st.session_state.ptype_name
+    radius_km = RADIUS_OPTIONS[st.session_state.radius_key]
+    target_min = PATIENT_TYPES[ptype_name]["target_min"]
+    _c1, _c2 = st.columns(2)
+    with _c1:
+        if st.button("◀ 다시 입력", use_container_width=True):
+            st.session_state.app_step = 1
+            st.rerun()
+    with _c2:
+        if st.button("🔄 재조회", use_container_width=True):
+            st.rerun()
     with st.spinner("실시간 병상·수용가능·경로 조회 중..."):
         try:
             top, allr = recommend(scene, ptype_name, radius_km)
@@ -564,16 +615,14 @@ if go and scene:
             "수용가능질환": ", ".join(r["accepted"]) or "-", "갱신": r["ftxt"],
             "공지": "🚨" if msg_idx.get(r["hpid"]) else "",
         } for r in allr]), use_container_width=True, hide_index=True)
-else:
-    st.info("왼쪽에서 현장 위치(주소·장소 검색 또는 GPS)와 환자 유형을 고르고 **이송 병원 추천**을 눌러주세요.")
 
 # ──────────────────────────────────────────────
-# 구급 빅데이터 근거 패널 (소방청 구급활동 25.5만건 분석)
+# 하단: 지금 서울 응급실 포화 현황 (실시간, 접이식)
 # ──────────────────────────────────────────────
 st.divider()
 with st.expander("📊 지금 서울 응급실 포화 현황 (실시간)", expanded=False):
     try:
-        seoul = get_er_beds("서울특별시")
+        seoul = load_beds()
         rows = [{"병원": h["name"], "잔여병상": h["er_beds"]}
                 for h in seoul if h["er_beds"] is not None]
         df = pd.DataFrame(rows).sort_values("잔여병상")
