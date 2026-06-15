@@ -105,20 +105,23 @@ if "stage" not in st.session_state:
 
 @st.cache_data(ttl=21600, show_spinner=False)   # 6시간 캐시
 def load_platform_stats():
-    """소방안전 빅데이터 플랫폼 전국 집계(필터 없음 → 즉시 응답). 실패하면 None."""
+    """소방안전 빅데이터 플랫폼 전국 집계(필터 없음 → 즉시 응답).
+    실패 시 {'error': 사유} 반환 → 화면에 원인 표시(임시 디버그)."""
     try:
         from fire_bigdata import national_incident_total, national_consult_total
-    except Exception:
-        return None
+    except Exception as e:
+        return {"error": f"모듈 import 실패: {e}"}
     out = {}
+    err = None
     for key, fn in (("incidents", national_incident_total),
                     ("consults", national_consult_total)):
         try:
             out[key] = fn()
-        except Exception:
+        except Exception as e:
             out[key] = None
+            err = str(e)
     if out.get("incidents") is None and out.get("consults") is None:
-        return None
+        return {"error": err or "건수 없음(응답 파싱 실패)"}
     return out
 
 
@@ -142,7 +145,9 @@ if st.session_state.stage == "landing":
     with st.expander("이 서비스가 왜 필요한가요?  —  데이터로 보는 이유"):
         # 소방안전 빅데이터 플랫폼 실시간 집계 (출처 명시 → 플랫폼 데이터 활용 증명)
         plat = load_platform_stats()
-        if plat:
+        if plat and plat.get("error"):
+            st.warning(f"⚠️ 플랫폼 집계 로드 실패: {plat['error']}")
+        elif plat:
             st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 실시간 집계**")
             p1, p2 = st.columns(2)
             if plat.get("incidents") is not None:
