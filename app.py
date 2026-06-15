@@ -125,6 +125,28 @@ def load_platform_stats():
     return out
 
 
+PLATFORM_SUMMARY_URL = ("https://raw.githubusercontent.com/fghdhfg/"
+                        "EMS_colletcer/main/data/platform_summary.json")
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_platform_summary():
+    """수집봇이 만든 플랫폼 표본 요약(현장 체류시간·중증 비율). 없으면 None."""
+    try:
+        r = requests.get(PLATFORM_SUMMARY_URL, timeout=5)
+        if r.status_code == 200 and r.text.strip():
+            return r.json()
+    except Exception:
+        pass
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "platform_summary.json")
+        with open(path, encoding="utf-8") as fp:
+            return json.load(fp)
+    except Exception:
+        return None
+
+
 if st.session_state.stage == "landing":
     _hero = (
         '<div class="land-hero"><div class="land-stripe"></div>'
@@ -144,18 +166,40 @@ if st.session_state.stage == "landing":
 
     with st.expander("이 서비스가 왜 필요한가요?  —  데이터로 보는 이유"):
         # 소방안전 빅데이터 플랫폼 실시간 집계 (출처 명시 → 플랫폼 데이터 활용 증명)
-        plat = load_platform_stats()
-        if plat and plat.get("error"):
-            st.warning(f"⚠️ 플랫폼 집계 로드 실패: {plat['error']}")
-        elif plat:
-            st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 실시간 집계**")
-            p1, p2 = st.columns(2)
-            if plat.get("incidents") is not None:
-                p1.metric("전국 구급 출동(누적)", f"{plat['incidents']:,}건")
-            if plat.get("consults") is not None:
-                p2.metric("전국 구급상황관리센터 의료상담", f"{plat['consults']:,}건")
-            st.caption("출처: 소방안전 빅데이터 플랫폼 · 전국 구급 현황 / 전국 구급상황관리 현황 API")
+        # 소방안전 빅데이터 플랫폼 — 수집봇 표본 요약 우선, 없으면 라이브 집계
+        psum = load_platform_summary()
+        if psum and not psum.get("error"):
+            st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 전국 구급 현황 분석**")
+            m1, m2, m3 = st.columns(3)
+            nt = psum.get("national_total")
+            if nt:
+                m1.metric("전국 구급 출동(누적)", f"{nt:,}건")
+            stay = (psum.get("stay_minutes") or {}).get("avg")
+            if stay is not None:
+                m2.metric("평균 현장 체류시간", f"{stay:.0f}분", "병원 찾는 시간 포함")
+            sev = psum.get("severe") or {}
+            ssym = sev.get("severe_symptom_pct")
+            if ssym is not None:
+                m3.metric("중증 증상 비율", f"{ssym:.0f}%", "심정지·뇌·심혈관 등")
+            st.caption(f"표본 {psum.get('sample_size', 0):,}건 분석 · 갱신 "
+                       f"{psum.get('updated_utc', '')} UTC · "
+                       "출처: 소방안전 빅데이터 플랫폼 전국 구급 현황 API")
+            st.caption("👉 환자를 실은 구급차가 현장에 머무는 시간 = 받아줄 병원을 찾는 시간. "
+                       "'수용ON'은 이 시간을 실시간 추천으로 줄인다.")
             st.divider()
+        else:
+            plat = load_platform_stats()
+            if plat and plat.get("error"):
+                st.warning(f"⚠️ 플랫폼 집계 로드 실패: {plat['error']}")
+            elif plat:
+                st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 실시간 집계**")
+                p1, p2 = st.columns(2)
+                if plat.get("incidents") is not None:
+                    p1.metric("전국 구급 출동(누적)", f"{plat['incidents']:,}건")
+                if plat.get("consults") is not None:
+                    p2.metric("전국 구급상황관리센터 의료상담", f"{plat['consults']:,}건")
+                st.caption("출처: 소방안전 빅데이터 플랫폼 · 전국 구급 현황 / 전국 구급상황관리 현황 API")
+                st.divider()
 
         st.caption("소방청 구급활동정보 분석 (2025년 상반기 · 서울 25개 소방서 · 약 25.5만 건)")
         a, b, c2, d = st.columns(4)
