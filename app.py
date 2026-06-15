@@ -102,6 +102,25 @@ _AMBULANCE_SVG = ("""
 if "stage" not in st.session_state:
     st.session_state.stage = "landing"
 
+
+@st.cache_data(ttl=21600, show_spinner=False)   # 6시간 캐시
+def load_platform_stats():
+    """소방안전 빅데이터 플랫폼 서울 집계. 실패하면 None → 랜딩은 정상 동작."""
+    try:
+        from fire_bigdata import seoul_incident_count, seoul_consult_count
+    except Exception:
+        return None
+    out = {}
+    for key, fn in (("incidents", seoul_incident_count), ("consults", seoul_consult_count)):
+        try:
+            out[key] = fn()
+        except Exception:
+            out[key] = None
+    if out.get("incidents") is None and out.get("consults") is None:
+        return None
+    return out
+
+
 if st.session_state.stage == "landing":
     _hero = (
         '<div class="land-hero"><div class="land-stripe"></div>'
@@ -120,6 +139,18 @@ if st.session_state.stage == "landing":
             st.rerun()
 
     with st.expander("이 서비스가 왜 필요한가요?  —  데이터로 보는 이유"):
+        # 소방안전 빅데이터 플랫폼 실시간 집계 (출처 명시 → 플랫폼 데이터 활용 증명)
+        plat = load_platform_stats()
+        if plat:
+            st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 실시간 집계**")
+            p1, p2 = st.columns(2)
+            if plat.get("incidents") is not None:
+                p1.metric("서울 구급 출동(현황)", f"{plat['incidents']:,}건")
+            if plat.get("consults") is not None:
+                p2.metric("서울 구급상황관리센터 의료상담", f"{plat['consults']:,}건")
+            st.caption("출처: 소방안전 빅데이터 플랫폼 · 전국 구급 현황 / 전국 구급상황관리 현황 API")
+            st.divider()
+
         st.caption("소방청 구급활동정보 분석 (2025년 상반기 · 서울 25개 소방서 · 약 25.5만 건)")
         a, b, c2, d = st.columns(4)
         a.metric("골든타임 위험 출동", "21.9%", "5건 중 1건")
