@@ -105,13 +105,14 @@ if "stage" not in st.session_state:
 
 @st.cache_data(ttl=21600, show_spinner=False)   # 6시간 캐시
 def load_platform_stats():
-    """소방안전 빅데이터 플랫폼 서울 집계. 실패하면 None → 랜딩은 정상 동작."""
+    """소방안전 빅데이터 플랫폼 전국 집계(필터 없음 → 즉시 응답). 실패하면 None."""
     try:
-        from fire_bigdata import seoul_incident_count, seoul_consult_count
+        from fire_bigdata import national_incident_total, national_consult_total
     except Exception:
         return None
     out = {}
-    for key, fn in (("incidents", seoul_incident_count), ("consults", seoul_consult_count)):
+    for key, fn in (("incidents", national_incident_total),
+                    ("consults", national_consult_total)):
         try:
             out[key] = fn()
         except Exception:
@@ -145,9 +146,9 @@ if st.session_state.stage == "landing":
             st.markdown("**소방안전 빅데이터 플랫폼(소방청) — 실시간 집계**")
             p1, p2 = st.columns(2)
             if plat.get("incidents") is not None:
-                p1.metric("서울 구급 출동(현황)", f"{plat['incidents']:,}건")
+                p1.metric("전국 구급 출동(누적)", f"{plat['incidents']:,}건")
             if plat.get("consults") is not None:
-                p2.metric("서울 구급상황관리센터 의료상담", f"{plat['consults']:,}건")
+                p2.metric("전국 구급상황관리센터 의료상담", f"{plat['consults']:,}건")
             st.caption("출처: 소방안전 빅데이터 플랫폼 · 전국 구급 현황 / 전국 구급상황관리 현황 API")
             st.divider()
 
