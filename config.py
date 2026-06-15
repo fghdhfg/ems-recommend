@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-API 키 로더 (배포용 - 키 미포함, 안전하게 공개 가능)
+API 키 로더 (배포용 - 키값 미포함, 안전하게 공개 가능)
 키는 Streamlit Secrets 또는 환경변수에서 읽음.
-- 클라우드: Streamlit Cloud의 Secrets에 DATA_GO_KR_KEY, KAKAO_REST_KEY 등록
-- 로컬: 환경변수로 설정하거나, 이 파일에 직접 넣지 말고 .streamlit/secrets.toml 사용
+- 클라우드: Streamlit Cloud Secrets에 DATA_GO_KR_KEY, KAKAO_REST_KEY, BIGDATA119_KEY 등록
+- 로컬: 환경변수로 설정하거나 .streamlit/secrets.toml 사용 (이 파일에 키를 직접 넣지 말 것)
 """
 
 import os
@@ -23,3 +23,4 @@ def _get(key):
 
 DATA_GO_KR_KEY = _get("DATA_GO_KR_KEY")
 KAKAO_REST_KEY = _get("KAKAO_REST_KEY")
+BIGDATA119_KEY = _get("BIGDATA119_KEY")   # 소방안전 빅데이터 플랫폼 승인키 (X-API-KEY)
