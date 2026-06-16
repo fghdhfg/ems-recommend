@@ -304,16 +304,22 @@ def load_diss_messages():
 
 @st.cache_data(ttl=600, show_spinner=False)
 def geocode(address):
-    """카카오 주소->좌표 (경도, 위도)"""
-    url = "https://dapi.kakao.com/v2/local/search/address.json"
-    r = requests.get(url, headers={"Authorization": f"KakaoAK {KAKAO_REST_KEY}"},
-                     params={"query": address}, timeout=10)
+    """카카오 주소->좌표 (경도, 위도). 실패 원인을 RuntimeError로 알림."""
+    if not KAKAO_REST_KEY:
+        raise RuntimeError("KAKAO_REST_KEY가 비어 있습니다 (Secrets 확인).")
+    headers = {"Authorization": f"KakaoAK {KAKAO_REST_KEY}"}
+    # 1) 주소 검색
+    r = requests.get("https://dapi.kakao.com/v2/local/search/address.json",
+                     headers=headers, params={"query": address}, timeout=10)
+    if r.status_code != 200:
+        raise RuntimeError(f"카카오 응답 {r.status_code}: {r.text[:120]}")
     docs = r.json().get("documents", [])
     if not docs:
-        # 키워드 검색으로 폴백 (건물명 등)
-        url2 = "https://dapi.kakao.com/v2/local/search/keyword.json"
-        r = requests.get(url2, headers={"Authorization": f"KakaoAK {KAKAO_REST_KEY}"},
-                         params={"query": address}, timeout=10)
+        # 2) 키워드(장소) 검색 폴백
+        r = requests.get("https://dapi.kakao.com/v2/local/search/keyword.json",
+                         headers=headers, params={"query": address}, timeout=10)
+        if r.status_code != 200:
+            raise RuntimeError(f"카카오 응답 {r.status_code}: {r.text[:120]}")
         docs = r.json().get("documents", [])
     if not docs:
         return None
@@ -516,13 +522,17 @@ if _cur == 1:
     if _mode == "🔎 주소·장소 검색":
         _addr = st.text_input("주소·장소명", placeholder="예: 강남역, 서울시청, 노원구청")
         if _addr:
-            _geo = geocode(_addr)
+            try:
+                _geo = geocode(_addr)
+            except Exception as e:
+                _geo = None
+                st.error(f"위치 검색 오류: {e}")
             if _geo:
                 st.session_state.scene = _geo
                 st.session_state.scene_label = _addr
                 st.success(f"✅ 위치 확인: {_addr}")
-            else:
-                st.error("위치를 찾지 못했습니다. 다른 키워드로 시도해 보세요.")
+            elif _geo is None and _addr:
+                st.warning("해당 키워드로 위치를 찾지 못했습니다. 다른 표현으로 시도해 보세요.")
     else:
         try:
             from streamlit_geolocation import streamlit_geolocation
