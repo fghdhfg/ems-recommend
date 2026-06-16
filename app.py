@@ -524,9 +524,9 @@ if _cur == 1:
         if _addr:
             try:
                 _geo = geocode(_addr)
-            except Exception as e:
+            except Exception:
                 _geo = None
-                st.error(f"위치 검색 오류: {e}")
+                st.error("위치 검색에 일시적으로 실패했습니다. 잠시 후 다시 시도해 주세요.")
             if _geo:
                 st.session_state.scene = _geo
                 st.session_state.scene_label = _addr
